@@ -1,0 +1,27 @@
+{
+  "name": "npm-registry-utils",
+  "version": "1.0.4",
+  "description": "",
+  "type": "module",
+  "source": "./src/index.ts",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "rimraf dist && microbundle -f cjs --target node",
+    "test": "mocha"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "microbundle": "^0.14.1",
+    "mocha": "^9.1.3",
+    "rimraf": "^3.0.2",
+    "ts-node": "^10.3.0",
+    "typescript": "^4.4.4"
+  },
+  "dependencies": {
+    "lru-cache": "^6.0.0",
+    "node-fetch": "^3.0.0",
+    "semver": "^7.3.5"
+  }
+}
