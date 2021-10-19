@@ -1,27 +1,29 @@
 {
   "name": "npm-registry-utils",
-  "version": "1.0.4",
+  "version": "1.1.1",
   "description": "",
-  "type": "module",
   "source": "./src/index.ts",
-  "main": "./dist/index.cjs",
+  "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "rimraf dist && microbundle -f cjs --target node",
-    "test": "mocha"
+    "build": "rimraf dist && tsc -d --sourcemap",
+    "test": "jest"
   },
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "microbundle": "^0.14.1",
-    "mocha": "^9.1.3",
+    "@types/jest": "^27.0.2",
+    "@types/lru-cache": "^5.1.1",
+    "@types/node-fetch": "^2.5.12",
+    "@types/semver": "^7.3.8",
+    "jest": "^27.3.1",
     "rimraf": "^3.0.2",
-    "ts-node": "^10.3.0",
+    "ts-jest": "^27.0.7",
     "typescript": "^4.4.4"
   },
   "dependencies": {
     "lru-cache": "^6.0.0",
-    "node-fetch": "^3.0.0",
+    "node-fetch": "^2.6.5",
     "semver": "^7.3.5"
   }
 }

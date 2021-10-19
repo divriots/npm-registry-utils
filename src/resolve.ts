@@ -1,4 +1,4 @@
-import semver from "semver";
+import semver = require("semver");
 import { Meta } from "./types";
 
 /** @returns {string|undefined} */

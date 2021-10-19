@@ -1,6 +1,6 @@
-import LRU from "lru-cache";
+import LRU = require("lru-cache");
+import https = require("https");
 import fetch from "node-fetch";
-import * as https from "https";
 import { Meta } from "./types";
 
 const _5MIN = 5 * 60 * 1000;
@@ -10,8 +10,8 @@ const _1H = 60 * 60 * 1000;
 const current_year = new Date().getFullYear();
 
 function computeFreshness(
-  { meta: { modified, versions }, timestamp },
-  requestedVersion
+  { meta: { modified, versions }, timestamp } : {meta: Meta, timestamp: number},
+  requestedVersion: string
 ) {
   let shouldRefresh, returnStale;
   const elapsed = Date.now() - timestamp;
@@ -38,38 +38,40 @@ function computeFreshness(
 }
 
 export class Cache {
-  agent: https.Agent
-  cache: LRU
-  logger: typeof console
-  fallback?: (id: string) => Meta
+  agent: https.Agent;
+  cache: LRU<string, any>;
+  logger: typeof console;
   registry: string;
+  headers: Record<string, string>;
+  fetchCount = 0;
 
   constructor({
     maxSockets = 5,
     cacheSize = 10 * 1024,
     logger = console,
-    registry = 'registry.npmjs.org',
-    fallback,
+    registry = "registry.npmjs.org",
+    headers = {
+      Accept: "application/vnd.npm.install-v1+json",
+    },
   }: {
-    maxSockets?: number,
-    cacheSize?: number,
-    logger?: typeof console,
-    registry?: string,
-    fallback?: (id: string)=> Meta
+    maxSockets?: number;
+    cacheSize?: number;
+    logger?: typeof console;
+    registry?: string;
+    headers?: Record<string, string>;
   } = {}) {
     this.agent = new https.Agent({
       maxSockets,
     });
-    /** @type {LRU<string, any>} */
     this.cache = new LRU({
       max: cacheSize,
     });
     this.logger = logger;
-    this.fallback = fallback;
+    this.headers = headers;
     this.registry = registry;
   }
 
-  async exists(qualified) {
+  async exists(qualified: string) {
     return this.getMeta(qualified, "$EXISTS$").then(({ error }) => !error);
   }
 
@@ -77,14 +79,15 @@ export class Cache {
    * @param qualified {string}
    * @returns {Promise<any>}
    */
-  async getMeta(qualified, requestedVersion) {
+  async getMeta(qualified: string, requestedVersion?: string) {
     const refreshMeta = async (etag?: string) => {
       const headers = {
-        Accept: "application/vnd.npm.install-v1+json",
+        ...this.headers,
       };
       if (etag) {
         headers["if-none-match"] = etag;
       }
+      this.fetchCount++;
       const response = await fetch(`https://${this.registry}/${qualified}`, {
         headers,
         agent: this.agent,
@@ -92,22 +95,17 @@ export class Cache {
       this.logger.debug(`Received ${response.status}`);
       if (etag && response.status === 304) return null; // not modified
       let meta: Meta = <any>await response.json();
-      if ('error' in meta) {
-        if (this.fallback) {
-          meta = await this.fallback(qualified);
-        }
-        if ('error' in meta) {
-          meta.modified = new Date().toISOString();
-          this.logger.warn(
-            `Error fetching metadata for npm package ${qualified}: ${meta.error}`
-          );
-        }
+      if ("error" in meta) {
+        meta.modified = new Date().toISOString();
+        this.logger.warn(
+          `Error fetching metadata for npm package ${qualified}: ${meta.error}`
+        );
       }
       if (meta.versions) {
         for (const v of <any>Object.values(meta.versions)) {
           // saves some memory & cache size
           if (v.dist) {
-            v.dist = { tarball: v.dist.tarball }
+            v.dist = { tarball: v.dist.tarball };
           }
           delete v.engines;
           delete v.name;
@@ -153,17 +151,17 @@ export class Cache {
   }
 
   async export() {
-    const data = {};
+    const data = {} as Record<string, any>;
     await Promise.all(
       this.cache
         .keys()
-        .map((k) => [k, this.cache.get(k)])
+        .map((k) => [k, this.cache.get(k)] as [string, any])
         .map(async ([k, v$]) => (data[k] = await v$))
     );
     return data;
   }
 
-  import(data) {
+  import(data: Record<string, any>) {
     Object.entries(data).forEach(([k, v]) => this.cache.set(k, v));
   }
 }
