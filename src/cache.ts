@@ -144,7 +144,21 @@ export class Cache {
       }
       return returnStale ? cached.meta : meta$;
     } else {
-      const refresh$ = refreshMeta();
+      const refresh$ = refreshMeta().catch((e) => {
+        console.debug(`refreshMeta error on ${qualified} (${e.message}), retrying with delay`);
+        return new Promise<any>((resolve) => {
+          setTimeout(
+            () =>
+              resolve(
+                refreshMeta().catch((e) => {
+                  this.cache.del(qualified);
+                  return Promise.reject(e);
+                })
+              ),
+            100
+          );
+        });
+      });
       this.cache.set(qualified, refresh$);
       return refresh$.then((m) => m.meta);
     }
