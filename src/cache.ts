@@ -145,7 +145,7 @@ export class Cache {
       return returnStale ? cached.meta : meta$;
     } else {
       const refresh$ = refreshMeta().catch((e) => {
-        console.debug(`refreshMeta error on ${qualified} (${e.message}), retrying with delay`);
+        this.logger.debug(`refreshMeta error on ${qualified} (${e.message}), retrying with delay`);
         return new Promise<any>((resolve) => {
           setTimeout(
             () =>
