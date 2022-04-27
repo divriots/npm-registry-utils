@@ -44,6 +44,9 @@ export class Cache {
   registry: string;
   headers: Record<string, string>;
   fetchCount = 0;
+  pendingRefreshes = new LRU({
+    max: 10 * 1024,
+  });
 
   constructor({
     maxSockets = 5,
@@ -127,20 +130,28 @@ export class Cache {
       );
       let meta$;
       if (shouldRefresh) {
-        cached.timestamp = Date.now(); // prevent simultaneous refreshes
-        meta$ = refreshMeta(cached.etag)
-          .then((m) => {
-            if (m !== null) {
-              this.cache.set(qualified, m);
-              return m.meta;
-            }
-            return cached.meta;
-          })
-          .catch((e) => {
-            this.logger.warn("Failed to refresh meta", e);
-            // if npm registry fetch fails and we have a cached meta, use it
-            return cached.meta;
-          });
+        // prevent simultaneous refreshes
+        const pendingRefresh = this.pendingRefreshes.get(qualified);
+        if (pendingRefresh) {
+          meta$ = pendingRefresh;
+        } else {
+          meta$ = refreshMeta(cached.etag)
+            .then((m) => {
+              cached.timestamp = Date.now();
+              this.pendingRefreshes.del(qualified);
+              if (m !== null) {
+                this.cache.set(qualified, m);
+                return m.meta;
+              }
+              return cached.meta;
+            })
+            .catch((e) => {
+              this.logger.warn("Failed to refresh meta", e);
+              // if npm registry fetch fails and we have a cached meta, use it
+              return cached.meta;
+            });
+            this.pendingRefreshes.set(qualified, meta$);
+        }
       }
       return returnStale ? cached.meta : meta$;
     } else {
