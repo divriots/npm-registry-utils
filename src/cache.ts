@@ -81,49 +81,49 @@ export class Cache {
     return this.getMeta(qualified, "$EXISTS$").then(({ error }) => !error);
   }
 
-  /**
-   * @param qualified {string}
-   * @returns {Promise<any>}
-   */
-  async getMeta(qualified: string, requestedVersion?: string) {
-    const refreshMeta = async (etag?: string) => {
-      const headers = {
-        ...this.headers,
-      };
-      if (etag) {
-        headers["if-none-match"] = etag;
-      }
-      this.fetchCount++;
-      const response = await fetch(`https://${this.registry}/${qualified}`, {
-        headers,
-        agent: this.agent,
-      });
-      this.logger.debug(`Received ${response.status}`);
-      if (etag && response.status === 304) return null; // not modified
-      let meta: Meta = <any>await response.json();
-      if ("error" in meta) {
-        meta.modified = new Date().toISOString();
-        this.logger.warn(
-          `Error fetching metadata for npm package ${qualified}: ${meta.error}`
-        );
-      }
-      if (meta.versions) {
-        for (const v of <any>Object.values(meta.versions)) {
-          // saves some memory & cache size
-          if (v.dist) {
-            v.dist = { tarball: v.dist.tarball };
-          }
-          delete v.engines;
-          delete v.name;
-          delete v.version;
-        }
-      }
-      return {
-        meta,
-        etag: response.headers.get("etag"),
-        timestamp: Date.now(),
-      };
+  async refreshMeta(
+    qualified: string,
+    etag?: string
+  ): Promise<{ meta: Meta; etag: string; timestamp: number }> {
+    const headers = {
+      ...this.headers,
     };
+    if (etag) {
+      headers["if-none-match"] = etag;
+    }
+    this.fetchCount++;
+    const response = await fetch(`https://${this.registry}/${qualified}`, {
+      headers,
+      agent: this.agent,
+    });
+    this.logger.debug(`Received ${response.status}`);
+    if (etag && response.status === 304) return null; // not modified
+    let meta: Meta = <any>await response.json();
+    if ("error" in meta) {
+      meta.modified = new Date().toISOString();
+      this.logger.warn(
+        `Error fetching metadata for npm package ${qualified}: ${meta.error}`
+      );
+    }
+    if (meta.versions) {
+      for (const v of <any>Object.values(meta.versions)) {
+        // saves some memory & cache size
+        if (v.dist) {
+          v.dist = { tarball: v.dist.tarball };
+        }
+        delete v.engines;
+        delete v.name;
+        delete v.version;
+      }
+    }
+    return {
+      meta,
+      etag: response.headers.get("etag"),
+      timestamp: Date.now(),
+    };
+  }
+
+  async getMeta(qualified: string, requestedVersion?: string): Promise<Meta> {
     const cached$ = this.cache.get(qualified);
     if (cached$) {
       const cached = await cached$;
@@ -138,7 +138,7 @@ export class Cache {
         if (pendingRefresh) {
           meta$ = pendingRefresh;
         } else {
-          meta$ = refreshMeta(cached.etag)
+          meta$ = this.refreshMeta(qualified, cached.etag)
             .then((m) => {
               cached.timestamp = Date.now();
               this.pendingRefreshes.del(qualified);
@@ -158,7 +158,7 @@ export class Cache {
       }
       return returnStale ? cached.meta : meta$;
     } else {
-      const refresh$ = refreshMeta().catch((e) => {
+      const refresh$ = this.refreshMeta(qualified).catch((e) => {
         this.logger.debug(
           `refreshMeta error on ${qualified} (${e.message}), retrying with delay`
         );
@@ -166,7 +166,7 @@ export class Cache {
           setTimeout(
             () =>
               resolve(
-                refreshMeta().catch((e) => {
+                this.refreshMeta(qualified).catch((e) => {
                   this.cache.del(qualified);
                   return Promise.reject(e);
                 })
