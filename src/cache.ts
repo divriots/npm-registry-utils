@@ -10,7 +10,10 @@ const _1H = 60 * 60 * 1000;
 const current_year = new Date().getFullYear();
 
 function computeFreshness(
-  { meta: { modified, versions }, timestamp } : {meta: Meta, timestamp: number},
+  {
+    meta: { modified, versions },
+    timestamp,
+  }: { meta: Meta; timestamp: number },
   requestedVersion: string
 ) {
   let shouldRefresh, returnStale;
@@ -150,13 +153,15 @@ export class Cache {
               // if npm registry fetch fails and we have a cached meta, use it
               return cached.meta;
             });
-            this.pendingRefreshes.set(qualified, meta$);
+          this.pendingRefreshes.set(qualified, meta$);
         }
       }
       return returnStale ? cached.meta : meta$;
     } else {
       const refresh$ = refreshMeta().catch((e) => {
-        this.logger.debug(`refreshMeta error on ${qualified} (${e.message}), retrying with delay`);
+        this.logger.debug(
+          `refreshMeta error on ${qualified} (${e.message}), retrying with delay`
+        );
         return new Promise<any>((resolve) => {
           setTimeout(
             () =>
