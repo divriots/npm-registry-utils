@@ -24,6 +24,7 @@
   "dependencies": {
     "lru-cache": "^6.0.0",
     "node-fetch": "^2.6.5",
+    "prettier": "^2.6.2",
     "semver": "^7.3.5"
   }
 }
