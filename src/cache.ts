@@ -14,7 +14,7 @@ function computeFreshness(
     meta: { modified, versions },
     timestamp,
   }: { meta: Meta; timestamp: number },
-  requestedVersion: string
+  requestedVersion?: string
 ) {
   let shouldRefresh, returnStale;
   const elapsed = Date.now() - timestamp;
@@ -40,14 +40,16 @@ function computeFreshness(
   return { shouldRefresh, returnStale };
 }
 
+type CachedMeta = { meta: Meta; etag?: string; timestamp: number };
+
 export class Cache {
   agent: https.Agent;
-  cache: LRU<string, any>;
+  cache: LRU<string, CachedMeta | Promise<CachedMeta>>;
   logger: typeof console;
   registry: string;
   headers: Record<string, string>;
   fetchCount = 0;
-  pendingRefreshes = new LRU({
+  pendingRefreshes = new LRU<string, Promise<Meta>>({
     max: 10 * 1024,
   });
 
@@ -84,7 +86,7 @@ export class Cache {
   async refreshMeta(
     qualified: string,
     etag?: string
-  ): Promise<{ meta: Meta; etag: string; timestamp: number }> {
+  ): Promise<null | CachedMeta> {
     const headers = {
       ...this.headers,
     };
@@ -95,6 +97,7 @@ export class Cache {
     const response = await fetch(`https://${this.registry}/${qualified}`, {
       headers,
       agent: this.agent,
+      timeout: 10000,
     });
     this.logger.debug(`Received ${response.status}`);
     if (etag && response.status === 304) return null; // not modified
@@ -116,9 +119,10 @@ export class Cache {
         delete v.version;
       }
     }
+    const respEtag = response.headers.get("etag");
     return {
       meta,
-      etag: response.headers.get("etag"),
+      etag: respEtag === null ? undefined : respEtag,
       timestamp: Date.now(),
     };
   }
@@ -131,7 +135,7 @@ export class Cache {
         cached,
         requestedVersion
       );
-      let meta$;
+      let meta$: Promise<Meta>;
       if (shouldRefresh) {
         // prevent simultaneous refreshes
         const pendingRefresh = this.pendingRefreshes.get(qualified);
@@ -140,12 +144,12 @@ export class Cache {
         } else {
           meta$ = this.refreshMeta(qualified, cached.etag)
             .then((m) => {
-              cached.timestamp = Date.now();
               this.pendingRefreshes.del(qualified);
               if (m !== null) {
                 this.cache.set(qualified, m);
                 return m.meta;
               }
+              cached.timestamp = Date.now();
               return cached.meta;
             })
             .catch((e) => {
@@ -156,7 +160,7 @@ export class Cache {
           this.pendingRefreshes.set(qualified, meta$);
         }
       }
-      return returnStale ? cached.meta : meta$;
+      return returnStale ? cached.meta : meta$!;
     } else {
       const refresh$ = this.refreshMeta(qualified).catch((e) => {
         this.logger.debug(
